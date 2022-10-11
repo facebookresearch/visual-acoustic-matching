@@ -91,21 +91,15 @@ class UNET(BaseAVModel):
 
         if self.args.convolve_random_rir:
             convolve_random_rir(batch)
+            
+        if self.args.use_audio_da:
+            apply_audio_data_augmentation(self.args, batch, phase)
 
-        apply_audio_data_augmentation(self.args, batch, phase)
-
-        if self.args.match_rir:
-            rir = batch['rir_spec'].permute(0, 2, 1)
-            if self.args.log1p:
-                rir = torch.log1p(rir)
-            tgt_spec = F.pad(rir, (0, 0, 0, 147))
-            src_spec = torch.zeros((rir.size(0), 1, 256, 256), device=rir.device)
-        else:
-            src_spec = self.wav2spec(batch['src_wav']).permute(0, 3, 2, 1)
-            tgt_spec = self.wav2spec(batch['recv_wav']).permute(0, 3, 2, 1)
-            if not self.args.predict_mask:
-                src_spec = src_spec[:, :1, ...]
-                tgt_spec = tgt_spec[:, :1, ...]
+        src_spec = self.wav2spec(batch['src_wav']).permute(0, 3, 2, 1)
+        tgt_spec = self.wav2spec(batch['recv_wav']).permute(0, 3, 2, 1)
+        if not self.args.predict_mask:
+            src_spec = src_spec[:, :1, ...]
+            tgt_spec = tgt_spec[:, :1, ...]
 
         visual_inputs = []
         if self.args.use_depth:

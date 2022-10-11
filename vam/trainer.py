@@ -22,7 +22,6 @@ from vam.datasets.ss_speech_dataset import SoundSpacesSpeechDataset, to_tensor
 from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning import seed_everything
 seed_everything(1)
-# torch.use_deterministic_algorithms(d=True)
 
 
 parser = argparse.ArgumentParser()
@@ -45,7 +44,6 @@ parser.add_argument("--lr", default=0.001, type=float)
 parser.add_argument("--generator-lr", default=0.0002, type=float)
 parser.add_argument("--discriminator-lr", default=0.0002, type=float)
 parser.add_argument("--wd", default=0, type=float)
-parser.add_argument("--scheduler", default='none', type=str)
 parser.add_argument("--log-mag", default=False, action='store_true')
 parser.add_argument("--no-mask", default=False, action='store_true')
 parser.add_argument("--log1p", default=False, action='store_true')
@@ -62,13 +60,11 @@ parser.add_argument("--feed-forward-dropout-p", default=0.1, type=float)
 parser.add_argument("--attention-dropout-p", default=0.1, type=float)
 parser.add_argument("--conv-dropout-p", default=0.1, type=float)
 parser.add_argument("--no-dropout", default=False, action='store_true')
-parser.add_argument("--use-vit", default=False, action='store_true')
 parser.add_argument("--use-cnn", default=False, action='store_true')
 parser.add_argument("--generate-reverb", default=False, action='store_true')
 parser.add_argument("--acoustic-matching", default=False, action='store_true')
 parser.add_argument("--dereverb", default=False, action='store_true')
 parser.add_argument("--test", default=False, action='store_true')
-parser.add_argument("--test-all", default=False, action='store_true')
 parser.add_argument("--test-split", default='test-unseen', type=str)
 parser.add_argument("--visualize", default=False, action='store_true')
 parser.add_argument("--use-pretrained-rt60-predictor", default=False, action='store_true')
@@ -88,11 +84,8 @@ parser.add_argument("--encode-wav", default=False, action='store_true')
 parser.add_argument("--pretrained-transformer", default='', type=str)
 parser.add_argument("--freeze-transformer", default=False, action='store_true')
 parser.add_argument("--hop-length", default=160, type=int)
-parser.add_argument("--match-rir", default=False, action='store_true')
 parser.add_argument("--norm-rir-len", default=False, action='store_true')
 parser.add_argument("--multires-stft", default=False, action='store_true')
-parser.add_argument("--multires-stft-no-sc", default=False, action='store_true')
-parser.add_argument("--spectral-stft", default=False, action='store_true')
 parser.add_argument("--remove-mel-loss", default=False, action='store_true')
 parser.add_argument("--fft-sizes", default='256,512,1024', type=str)
 parser.add_argument("--hop-sizes", default='64,128,256', type=str)
@@ -127,7 +120,6 @@ parser.add_argument("--apply-high-pass", default=False, action='store_true')
 parser.add_argument("--crossmodal-dropout-p", default=-1, type=float)
 parser.add_argument("--comment", default="", type=str)
 parser.add_argument("--prev-ckpt", default=-1, type=int)
-parser.add_argument("--use-recv-audio", default=False, action='store_true')
 parser.add_argument("--generate-plot", default=False, action='store_true')
 parser.add_argument("--save-features", default=False, action='store_true')
 
@@ -135,30 +127,26 @@ parser.add_argument("--save-features", default=False, action='store_true')
 def main():
     args = parser.parse_args()
 
-    if args.acoustic_matching and args.match_rir:
-        assert args.remove_oov
     assert args.acoustic_matching or args.dereverb
 
     if args.model_dir == '':
         if args.acoustic_matching:
             if args.use_avspeech:
                 args.model_dir = 'data/models/vam/avspeech'
-            elif args.match_rir:
-                args.model_dir = 'data/models/vam/rir'
             else:
                 args.model_dir = 'data/models/vam/am'
         else:
             args.model_dir = 'data/models/vam/dereverb'
         print(f'Model dir: {args.model_dir}')
 
-    if args.test or args.test_all or args.visualize or args.fast_dev_run:
+    if args.test or args.visualize or args.fast_dev_run:
         args.slurm = False
         args.n_gpus = 1
         args.num_node = 1
         args.progress_bar = True
         args.batch_size = 16
 
-    if args.test or args.test_all:
+    if args.test:
         args.batch_size = 32
         args.num_worker = 10
 
@@ -201,29 +189,22 @@ def run(args):
         dataset = AVSpeechDataset
     else:
         dataset = SoundSpacesSpeechDataset
-    if args.test or args.test_all or args.visualize:
+    if args.test or args.visualize:
         test_set = dataset(split=args.test_split, use_rgb=True, use_depth=True, hop_length=args.hop_length,
-                           remove_oov=args.remove_oov,
-                           deterministic_eval=True, use_librispeech=args.use_librispeech,
+                           remove_oov=args.remove_oov, use_librispeech=args.use_librispeech,
                            convolve_random_rir=args.convolve_random_rir, use_da=args.use_da,
-                           read_mp4=args.read_mp4, use_recv_audio=args.use_recv_audio,
-                           )
+                           read_mp4=args.read_mp4)
         test_dataset = torch.utils.data.DataLoader(test_set, num_workers=10, batch_size=args.batch_size, pin_memory=True)
     else:
         train_set = dataset(split='train', use_rgb=True, use_depth=True, hop_length=args.hop_length,
-                            remove_oov=args.remove_oov,
-                            deterministic_eval=True, use_librispeech=args.use_librispeech,
+                            remove_oov=args.remove_oov, use_librispeech=args.use_librispeech,
                             convolve_random_rir=args.convolve_random_rir, use_da=args.use_da,
-                            read_mp4=args.read_mp4, use_recv_audio=args.use_recv_audio,
-                            )
+                            read_mp4=args.read_mp4)
         train_dataset = torch.utils.data.DataLoader(train_set, shuffle=True, num_workers=args.num_worker, pin_memory=True,
                                                     batch_size=args.batch_size)
         val_set = dataset(split='val', use_rgb=True, use_depth=True, hop_length=args.hop_length,
-                          remove_oov=args.remove_oov,
-                          deterministic_eval=True, use_librispeech=args.use_librispeech,
-                          convolve_random_rir=args.convolve_random_rir, use_da=args.use_da,
-                          read_mp4=args.read_mp4, use_recv_audio=args.use_recv_audio,
-                          )
+                          remove_oov=args.remove_oov, convolve_random_rir=args.convolve_random_rir, use_da=args.use_da,
+                          read_mp4=args.read_mp4)
         val_dataset = torch.utils.data.DataLoader(val_set, num_workers=args.num_worker, batch_size=args.batch_size, pin_memory=True)
 
     if args.model == 'avitar':
@@ -249,7 +230,7 @@ def run(args):
     checkpoint_callback = ModelCheckpoint(
         dirpath=os.path.join(args.model_dir, args.version),
         filename="vam_{epoch:04d}",
-        period=args.ckpt_interval,
+        every_n_val_epochs=args.ckpt_interval,
         save_top_k=-1,
         verbose=True,
     )
@@ -273,9 +254,7 @@ def run(args):
     trainer = Trainer(
         gpus=args.n_gpus,
         num_nodes=args.num_node,
-        # auto_select_gpus=True,
         accelerator="ddp",
-        # auto_scale_batch_size="binsearch",
         benchmark=True,
         max_epochs=args.max_epochs,
         resume_from_checkpoint=args.from_pretrained,
@@ -284,35 +263,16 @@ def run(args):
         logger=logger,
         progress_bar_refresh_rate=args.fast_dev_run or args.progress_bar,
         fast_dev_run=args.fast_dev_run,
-        plugins=DDPPlugin(find_unused_parameters=False),
-        # limit_train_batches=1,
-        # limit_val_batches=1,
-        # limit_test_batches=1,
-        # num_sanity_val_steps=0,
-        # max_epochs=1,
-        # profiler='simple'
-        # overfit_batches=10
+        plugins=DDPPlugin(find_unused_parameters=False)
     )
 
-    if not args.test and not args.test_all and not args.visualize:
+    if not args.test and not args.visualize:
         trainer.fit(model, train_dataset, val_dataset)
     elif args.test:
         assert True
         model.load_weights(torch.load(args.from_pretrained, map_location='cpu'))
         trainer.test(model, test_dataloaders=test_dataset)
         model.save_test_stats()
-    elif args.test_all:
-        args.eval_best = False
-        ckpt_paths = sorted(glob.glob(os.path.join(args.model_dir, args.version, f'vam_epoch=*.ckpt')))
-        for ckpt_path in ckpt_paths:
-            args.from_pretrained = ckpt_path
-            print(ckpt_path)
-            tokens = args.from_pretrained.split('=')
-            ckpt = int(tokens[-1][:tokens[-1].find('.')])
-            if ckpt <= args.prev_ckpt:
-                continue
-            model.load_weights(torch.load(ckpt_path, map_location='cpu'))
-            trainer.test(model, test_dataloaders=test_dataset)
     elif args.visualize:
         assert True
         model.load_weights(torch.load(args.from_pretrained, map_location='cpu'))
@@ -352,18 +312,6 @@ def generate_qual(args, model, dataset):
         input_wav, pred_wav, tgt_wav, pred_spec, tgt_spec, input_spec = \
             input_wav.cpu(), pred_wav.cpu(), tgt_wav.cpu(), pred_spec.cpu(), tgt_spec.cpu(), input_spec.cpu()
 
-        if args.match_rir:
-            from vam.models.base_av_model import compute_reverb
-            pred_wav, tgt_wav = compute_reverb(batch, to_tensor(pred_wav))
-            pred_wav = pred_wav[:, :tgt_wav.shape[1]]
-            pred_spec = torch.stft(pred_wav.squeeze(), n_fft=512, hop_length=args.hop_length, win_length=400,
-                                   window=torch.hamming_window(400, device=pred_wav.device), pad_mode='constant',
-                                   center=True, return_complex=True).abs()
-            tgt_spec = torch.stft(tgt_wav.squeeze(), n_fft=512, hop_length=args.hop_length, win_length=400,
-                                  window=torch.hamming_window(400, device=pred_wav.device), pad_mode='constant',
-                                  center=True, return_complex=True).abs()
-            args.match_rir = False
-
         # plot log spec
         input_spec = torch.log1p(input_spec)
         tgt_spec = torch.log1p(tgt_spec)
@@ -383,9 +331,6 @@ def generate_qual(args, model, dataset):
         input_spec = input_spec[:, :input_spec.shape[1]//2, :]
         tgt_spec = tgt_spec[:, :tgt_spec.shape[1]//2, :]
         pred_spec = pred_spec[:, :pred_spec.shape[1]//2, :]
-        if args.match_rir:
-            tgt_spec = tgt_spec[:, :, :pred_spec.shape[2]//3]
-            pred_spec = pred_spec[:, :, :pred_spec.shape[2]//3]
         for j in tqdm(range(pred_wav.shape[0])):
             if args.generate_plot:
                 fig, axes = plt.subplots(2, 3)
@@ -438,8 +383,6 @@ def generate_qual(args, model, dataset):
             sf.write(os.path.join(audio_dir, f'{count}-pred.wav'), pred_wav[j], samplerate=16000)
             sf.write(os.path.join(audio_dir, f'{count}-input.wav'), input_wav[j], samplerate=16000)
             count += 1
-        # if count > 1500:
-        #     break
 
 
 if __name__ == "__main__":

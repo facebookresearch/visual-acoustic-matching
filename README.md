@@ -6,10 +6,12 @@ We introduce the visual acoustic matching task, in which an audio clip is transf
 <div style="text-align: center;"><img width="500"  src="https://changan.io/images/vam.png"></div>
 
 ## Installation 
-Install this repo into pip by running the following command:
+1. Install the [speechmetrics](https://github.com/aliutkus/speechmetrics) library
+2. Install this repo into pip by running the following command:
 ```
 pip install -e .
 ```
+
 
 ## Usage
 This repo supports benchmarking multiple visual acoustic research tasks (visual acoustic matching, 
@@ -34,7 +36,6 @@ python vam/inference.py --model-dir data/pretrained-models/avspeech --version av
 
 A couple useful flags (mostly work on SoundSpaces-Speech):
 * ``--dereverb`` flag switches the model from acoustic matching to perform dereverberation
-* ``--match-rir`` flag switches the model from acoustic matching to IR synthesis
 * ``--visualize`` flag outputs qualitative examples
 
 

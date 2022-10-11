@@ -73,17 +73,12 @@ class VIDA(BaseAVModel):
 
 
 class Predictor(nn.Module):
-    def __init__(self, input_channel=2, use_rgb=False, use_depth=False, use_seg=False, no_mask=False,
-                 limited_fov=False, crop=False, normalize=False, mean_pool_visual=False, use_rgbd=False):
+    def __init__(self, input_channel=2, use_rgb=False, use_depth=False, no_mask=False,
+                 limited_fov=False, crop=False, normalize=False, mean_pool_visual=False):
         super(Predictor, self).__init__()
         self.use_rgb = use_rgb
         self.use_depth = use_depth
-        self.use_rgbd = use_rgbd
-        self.use_seg = use_seg
-        self.use_rgb = use_rgb
-        self.use_depth = use_depth
-        self.use_seg = use_seg
-        self.use_visual = use_rgb or use_depth or use_seg or use_rgbd
+        self.use_visual = use_rgb or use_depth
         self.mean_pool_visual = mean_pool_visual
 
         if self.use_visual:
@@ -91,11 +86,7 @@ class Predictor(nn.Module):
                 self.rgb_net = VisualNet(torchvision.models.resnet18(pretrained=True), 3)
             if use_depth:
                 self.depth_net = VisualNet(torchvision.models.resnet18(pretrained=True), 1)
-            if use_rgbd:
-                self.rgbd_net = VisualNet(torchvision.models.resnet18(pretrained=True), 4)
-            if use_seg:
-                self.seg_net = VisualNet(torchvision.models.resnet18(pretrained=True), 1)
-            concat_size = 512 * sum([self.use_rgb, self.use_depth, self.use_seg, self.use_rgbd])
+            concat_size = 512 * sum([self.use_rgb, self.use_depth])
             self.pooling = nn.AdaptiveAvgPool2d((1, 1))
             if self.mean_pool_visual:
                 self.conv1x1 = create_conv(concat_size, 512, 1, 0)
@@ -113,10 +104,6 @@ class Predictor(nn.Module):
             visual_features.append(self.rgb_net(inputs['rgb']))
         if self.use_depth:
             visual_features.append(self.depth_net(inputs['depth']))
-        if self.use_rgbd:
-            visual_features.append(self.rgbd_net(torch.cat([inputs['rgb'], inputs['depth']], dim=1)))
-        if self.use_seg:
-            visual_features.append(self.seg_net(inputs['seg']))
         if len(visual_features) != 0:
             # concatenate channel-wise
             concat_visual_features = torch.cat(visual_features, dim=1)
@@ -252,10 +239,6 @@ class AudioNet(nn.Module):
                 visual_feat = F.normalize(visual_feat, p=2, dim=1)
                 upconv_feature_input = F.normalize(upconv_feature_input, p=2, dim=1)
             upconv_feature_input = torch.cat((visual_feat, upconv_feature_input), dim=1)
-        if self.use_location:
-            location_feat = locations.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, upconv_feature_input.shape[-2],
-                                                                         upconv_feature_input.shape[-1])
-            upconv_feature_input = torch.cat((location_feat, upconv_feature_input), dim=1)
 
         audio_upconv1feature = self.audionet_upconvlayer1(upconv_feature_input)
         audio_upconv2feature = self.audionet_upconvlayer2(torch.cat((audio_upconv1feature, audio_conv4feature), dim=1))

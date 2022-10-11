@@ -148,36 +148,6 @@ class STFTLoss(nn.Module):
         return sc_loss * self.factor, mag_loss * self.factor
 
 
-class MagLogMagSTFTLoss(nn.Module):
-    """STFT loss module."""
-
-    def __init__(self, fft_size=1024, shift_size=120, win_length=600, window="hann_window"):
-        """Initialize STFT loss module."""
-        super(MagLogMagSTFTLoss, self).__init__()
-        self.fft_size = fft_size
-        self.shift_size = shift_size
-        self.win_length = win_length
-        self.register_buffer("window", getattr(torch, window)(win_length), persistent=False)
-        self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss()
-        self.stft_magnitude_loss = STFTMagnitudeLoss()
-
-    def forward(self, x, y):
-        """Calculate forward propagation.
-        Args:
-            x (Tensor): Predicted signal (B, T).
-            y (Tensor): Groundtruth signal (B, T).
-        Returns:
-            Tensor: Spectral convergence loss value.
-            Tensor: Log STFT magnitude loss value.
-        """
-        x_mag = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
-        y_mag = stft(y, self.fft_size, self.shift_size, self.win_length, self.window)
-        log_mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
-        mag_loss = self.stft_magnitude_loss(x_mag, y_mag)
-
-        return log_mag_loss + mag_loss
-
-
 class MultiResolutionSTFTLoss(nn.Module):
     """Multi resolution STFT loss module."""
 
@@ -225,50 +195,6 @@ class MultiResolutionSTFTLoss(nn.Module):
         mag_loss /= len(self.stft_losses)
 
         return self.factor_sc * sc_loss, self.factor_mag * mag_loss
-
-
-class MultiResolutionNoSCSTFTLoss(nn.Module):
-    """Multi resolution STFT loss module."""
-
-    def __init__(self, fft_sizes, hop_sizes, win_lengths):
-        """Initialize Multi resolution STFT loss module.
-        Args:
-            fft_sizes (list): List of FFT sizes.
-            hop_sizes (list): List of hop sizes.
-            win_lengths (list): List of window lengths.
-            window (str): Window function type.
-            factor (float): a balancing factor across different losses.
-        """
-        super(MultiResolutionNoSCSTFTLoss, self).__init__()
-
-        if win_lengths is None:
-            win_lengths = [600, 1200, 240]
-        if hop_sizes is None:
-            hop_sizes = [120, 240, 50]
-        if fft_sizes is None:
-            fft_sizes = [1024, 2048, 512]
-
-        assert len(fft_sizes) == len(hop_sizes) == len(win_lengths)
-        self.stft_losses = torch.nn.ModuleList()
-        for fs, ss, wl in zip(fft_sizes, hop_sizes, win_lengths):
-            self.stft_losses += [MagLogMagSTFTLoss(fs, ss, wl, 'hamming_window')]
-
-    def forward(self, x, y):
-        """Calculate forward propagation.
-        Args:
-            x (Tensor): Predicted signal (B, T).
-            y (Tensor): Groundtruth signal (B, T).
-        Returns:
-            Tensor: Multi resolution spectral convergence loss value.
-            Tensor: Multi resolution log STFT magnitude loss value.
-        """
-        mag_loss = 0.0
-        for f in self.stft_losses:
-            mag_l = f(x, y)
-            mag_loss += mag_l
-        mag_loss /= len(self.stft_losses)
-
-        return mag_loss
 
 
 class LossFunc(nn.Module):

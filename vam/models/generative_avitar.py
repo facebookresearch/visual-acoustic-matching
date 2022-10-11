@@ -88,8 +88,6 @@ class GenerativeAViTAr(AViTAr):
 
     def configure_optimizers(self):
         generator_params = list(self.conformer.parameters())
-        if self.args.use_vit:
-            generator_params += self.vit.parameters()
         if self.args.use_cnn:
             generator_params += self.cnn.parameters()
         optim_g = torch.optim.AdamW(generator_params, self.args.generator_lr, betas=[0.8, 0.99])

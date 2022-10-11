@@ -26,10 +26,9 @@ def to_tensor(v):
 
 class SoundSpacesSpeechDataset(Dataset):
     def __init__(self, split, normalize_whole=True, normalize_segment=False,
-                 use_real_imag=False, use_rgb=False, use_depth=False, use_seg=False, limited_fov=False, crop=False,
-                 flip=False, use_rgbd=False, remove_oov=False, hop_length=160,
-                 deterministic_eval=False, use_librispeech=False, convolve_random_rir=False, use_da=False,
-                 read_mp4=False, use_recv_audio=False):
+                 use_real_imag=False, use_rgb=False, use_depth=False, limited_fov=False,
+                 remove_oov=False, hop_length=160, use_librispeech=False, convolve_random_rir=False, use_da=False,
+                 read_mp4=False):
         self.split = split
         self.data_dir = os.path.join('data/soundspaces_speech', split)
         self.files = glob.glob(self.data_dir + '/**/*.pkl', recursive=True)
@@ -37,16 +36,16 @@ class SoundSpacesSpeechDataset(Dataset):
         self.normalize_whole = normalize_whole
         self.normalize_segment = normalize_segment
         self.use_real_imag = use_real_imag
-        self.use_rgb = use_rgb or use_rgbd
-        self.use_depth = use_depth or use_rgbd
-        self.use_seg = use_seg
+        self.use_rgb = use_rgb
+        self.use_depth = use_depth
         self.limited_fov = limited_fov
-        self.crop = crop
-        self.flip = flip
         self.hop_length = hop_length
-        self.deterministic_eval = deterministic_eval
 
         if remove_oov:
+            """
+            Remove cases where the speaker is out of view (or there is no direct sound).
+            """
+            os.makedirs('data/soundspaces_speech/remove_oov', exist_ok=True)
             tgt_file = os.path.join('data/soundspaces_speech/remove_oov', split + '.pkl')
             if os.path.exists(tgt_file):
                 with open(tgt_file, 'rb') as fo:
@@ -68,9 +67,7 @@ class SoundSpacesSpeechDataset(Dataset):
             print(f"Number of files after removing out-of-view cases: {len(self.files)}")
 
     def __len__(self):
-        # return len(self.files)
-        # TODO: need to fix the length
-        return 100
+        return len(self.files)
 
     def __getitem__(self, item):
         file = self.files[item]
@@ -79,9 +76,7 @@ class SoundSpacesSpeechDataset(Dataset):
 
         receiver_audio = data['receiver_audio']
         source_audio = data['source_audio']
-        location = data['location']
         rir = data['rir']
-        distance = data['geodesic_distance']
 
         src_wav, recv_wav = self.process_audio(source_audio, receiver_audio)
 
@@ -99,25 +94,18 @@ class SoundSpacesSpeechDataset(Dataset):
         if self.use_depth:
             sample['depth'] = to_tensor(np.concatenate(data['depth'], axis=1)).unsqueeze(0)
             visual_sensors.append('depth')
-        if self.use_seg:
-            sample['seg'] = to_tensor(np.concatenate([x == 41 for x in data['semantic']], axis=1)).unsqueeze(0)
-            visual_sensors.append('seg')
 
         if len(visual_sensors) > 0:
             if self.split == 'train':
-                # data augmentation
+                # data augmentation, randomly shifting the panorama image
                 width_shift = None
-                if self.flip:
-                    is_flipped = np.random.uniform()
                 for visual_sensor in visual_sensors:
                     if width_shift is None:
                         width_shift = np.random.randint(0, sample[visual_sensor].shape[-1])
                     sample[visual_sensor] = torch.roll(sample[visual_sensor], width_shift, dims=-1)
-                    if self.flip and is_flipped:
-                        sample[visual_sensor] = torch.flip(sample[visual_sensor], dims=(2,))
 
             if self.limited_fov:
-                # crop image to size 384 * 256
+                # crop image to normal FOV with size 384 * 256
                 if self.split == 'train':
                     offset = None
                     for visual_sensor in visual_sensors:
@@ -128,21 +116,13 @@ class SoundSpacesSpeechDataset(Dataset):
                     for visual_sensor in visual_sensors:
                         sample[visual_sensor] = sample[visual_sensor][:, :, :256]
 
-                # crop images
-                if self.crop:
-                    for visual_sensor in visual_sensors:
-                        sample[visual_sensor] = torchvision.transforms.RandomCrop((336, 224))(sample[visual_sensor])
             else:
                 for visual_sensor in visual_sensors:
-                    if self.crop:
-                        sample[visual_sensor] = torchvision.transforms.RandomCrop((336, 1008))(sample[visual_sensor])
-                        sample[visual_sensor] = torchvision.transforms.Resize((168, 504))(sample[visual_sensor])
-                    else:
-                        sample[visual_sensor] = torchvision.transforms.Resize((192, 576))(sample[visual_sensor])
+                    sample[visual_sensor] = torchvision.transforms.Resize((192, 576))(sample[visual_sensor])
 
         return sample
     
-    def process_audio(self, source_audio, receiver_audio, use_start=False):
+    def process_audio(self, source_audio, receiver_audio):
         # normalize the intensity before padding
         waveform_length = 40960
 
@@ -155,7 +135,7 @@ class SoundSpacesSpeechDataset(Dataset):
             receiver_audio = np.pad(receiver_audio, (0, max(0, waveform_length - receiver_audio.shape[0])))
             source_audio = np.pad(source_audio, (0, waveform_length - source_audio.shape[0]))
 
-        if (self.deterministic_eval and self.split != 'train') or use_start:
+        if self.split != 'train':
             start_index = 0
         else:
             start_index = np.random.randint(0, source_audio.shape[0] - waveform_length) \
@@ -169,15 +149,6 @@ class SoundSpacesSpeechDataset(Dataset):
             receiver_clip = normalize(receiver_clip, norm='peak')
 
         return source_clip, receiver_clip
-
-
-def compute_material(seg):
-    seg = to_tensor(np.concatenate(seg, axis=1)).unsqueeze(0)
-    material_dist = np.zeros(42)
-    for i in range(42):
-        material_dist[i] = (seg == i).sum()
-    material_dist /= seg.shape[1] * seg.shape[2]
-    return material_dist
 
 
 def normalize(audio, norm='peak'):
@@ -211,51 +182,3 @@ def process_rir(rir):
 
     rir = to_tensor(rir)
     return rir
-
-
-def calculate_drr_energy_ratio(y, cutoff_time, sr=16000):
-    direct_sound_idx = int(cutoff_time * sr)
-
-    # removing leading silence
-    y = normalize(y)
-    y = np.trim_zeros(y, trim='fb')
-
-    # everything up to the given idx is summed up and treated as direct sound energy
-    y = np.power(y, 2)
-    direct = sum(y[:direct_sound_idx + 1])
-    reverberant = sum(y[direct_sound_idx + 1:])
-    if direct == 0 or reverberant == 0:
-        drr = 1
-        print('Direct or reverberant is 0')
-    else:
-        drr = 10 * np.log10(direct / reverberant)
-
-    return drr
-
-
-def measure_decay_time(h, fs=1, decay_db=60):
-    h = np.array(h)
-    fs = float(fs)
-
-    # The power of the impulse response in dB
-    power = h ** 2
-    energy = np.cumsum(power[::-1])[::-1]  # Integration according to Schroeder
-
-    # remove the possibly all zero tail
-    i_nz = np.max(np.where(energy > 0)[0])
-    energy = energy[:i_nz]
-    energy_db = 10 * np.log10(energy)
-    energy_db -= energy_db[0]
-
-    # -5 dB headroom
-    i_5db = np.min(np.where(-5 - energy_db > 0)[0])
-    e_5db = energy_db[i_5db]
-    t_5db = i_5db / fs
-
-    # after decay
-    i_decay = np.min(np.where(-5 - decay_db - energy_db > 0)[0])
-    t_decay = i_decay / fs
-
-    # compute the decay time
-    decay_time = t_decay - t_5db
-    return decay_time

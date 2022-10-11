@@ -62,16 +62,12 @@ class AViTAr(BaseAVModel):
             args = dotdict(args)
         self.args = args
 
-        self.use_visual = args.use_vit or args.use_cnn
+        self.use_visual = args.use_cnn
         if args.use_rgb or args.use_depth:
             assert self.use_visual
 
         num_channel = args.use_rgb * 3 + args.use_depth
-        if args.use_vit:
-            dropout = emb_dropout = 0 if args.no_dropout else args.dropout
-            self.vit = ViT(image_size=(192, 576), patch_size=32, num_classes=1000, dim=512, depth=6, heads=16,
-                           mlp_dim=2048, dropout=dropout, emb_dropout=emb_dropout, channels=num_channel)
-        elif args.use_cnn:
+        if args.use_cnn:
             conv1 = nn.Conv2d(num_channel, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             layers = list(torchvision.models.resnet18(pretrained=args.pretrained_cnn).children())[1:-2]
             self.cnn = nn.Sequential(conv1, *layers)
@@ -82,8 +78,7 @@ class AViTAr(BaseAVModel):
         self.conformer = Conformer(input_dim=input_dim, num_encoder_layers=args.num_encoder_layers,
                                    input_dropout_p=input_dropout_p, feed_forward_dropout_p=feed_forward_dropout_p,
                                    attention_dropout_p=attention_dropout_p, conv_dropout_p=conv_dropout_p,
-                                   use_crossmodal_layer=self.use_visual,
-                                   conv_kernel_size=args.conv_kernel_size, decode_wav=args.decode_wav,
+                                   use_crossmodal_layer=self.use_visual, conv_kernel_size=args.conv_kernel_size, decode_wav=args.decode_wav,
                                    encode_wav=args.encode_wav, encoder_ratios=args.encoder_ratios,
                                    decoder_ratios=args.decoder_ratios, encoder_residual_layers=args.encoder_residual_layers,
                                    decoder_residual_layers=args.decoder_residual_layers,
@@ -105,9 +100,7 @@ class AViTAr(BaseAVModel):
             visual_input.append(batch['rgb'])
         visual_input = torch.cat(visual_input, dim=1)
 
-        if self.args.use_vit:
-            img_feat = self.vit(visual_input)
-        elif self.args.use_cnn:
+        if self.args.use_cnn:
             img_feat = self.cnn(visual_input)
             if self.args.adaptive_pool:
                 tgt_shape = (1, 1) if self.args.mean_pool else (img_feat.shape[-2]//2, img_feat.shape[-1]//2)
@@ -133,26 +126,19 @@ class AViTAr(BaseAVModel):
         if self.args.convolve_random_rir:
             convolve_random_rir(batch)
 
-        apply_audio_data_augmentation(self.args, batch, phase)
+        if self.args.use_audio_da:
+            apply_audio_data_augmentation(self.args, batch, phase)
 
-        if self.args.match_rir:
-            num_frame = int((np.ceil(17536 / self.args.hop_length)))
-            src = torch.zeros([batch['rir_wav'].size(0), num_frame, 257], device=batch['rir_wav'].device)
-            if self.args.decode_wav:
-                tgt = batch['rir_wav']
-            else:
-                tgt = self.wav2spec(batch['rir_wav'])[..., 0].permute(0, 2, 1)
-        else:
-            if self.args.decode_wav:
-                if self.args.encode_wav:
-                    src = batch['src_wav']
-                    tgt = batch['recv_wav']
-                else:
-                    src = self.wav2spec(batch['src_wav'])[..., 0].permute(0, 2, 1)
-                    tgt = torch.nn.functional.pad(batch['recv_wav'], (0, 128))
+        if self.args.decode_wav:
+            if self.args.encode_wav:
+                src = batch['src_wav']
+                tgt = batch['recv_wav']
             else:
                 src = self.wav2spec(batch['src_wav'])[..., 0].permute(0, 2, 1)
-                tgt = self.wav2spec(batch['recv_wav'])[..., 0].permute(0, 2, 1)
+                tgt = torch.nn.functional.pad(batch['recv_wav'], (0, 128))
+        else:
+            src = self.wav2spec(batch['src_wav'])[..., 0].permute(0, 2, 1)
+            tgt = self.wav2spec(batch['recv_wav'])[..., 0].permute(0, 2, 1)
 
         img_feat = self.get_visual_feat(batch) if self.use_visual else None
         pred, pred_rt60 = self.conformer(src, img_feat=img_feat)
@@ -211,15 +197,12 @@ def convolve_random_rir(batch):
 
 
 def apply_audio_data_augmentation(args, batch, phase):
-    from torch_audiomentations import Compose, PolarityInversion, AddColoredNoise, HighPassFilter
+    from torch_audiomentations import Compose, PolarityInversion, AddColoredNoise
 
     transforms = []
-
-    if args.apply_high_pass:
-        transforms.append(HighPassFilter(p=1, min_cutoff_freq=150, max_cutoff_freq=250))
-    if args.use_audio_da:
-        transforms.append(AddColoredNoise(p=1, min_snr_in_db=args.min_snr, max_snr_in_db=args.max_snr))
-        transforms.append(PolarityInversion(p=0.5))
+    transforms.append(AddColoredNoise(p=1, min_snr_in_db=args.min_snr, max_snr_in_db=args.max_snr))
+    transforms.append(PolarityInversion(p=0.5))
+    
     # Initialize augmentation callable
     if len(transforms) != 0:
         apply_augmentation = Compose(transforms=transforms)

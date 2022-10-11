@@ -22,33 +22,26 @@ from vam.datasets.ss_speech_dataset import SoundSpacesSpeechDataset
 
 class AVSpeechDataset(SoundSpacesSpeechDataset):
     def __init__(self, split, normalize_whole=True, normalize_segment=False, use_real_imag=False,
-                 use_rgb=False, use_depth=False, use_seg=False, limited_fov=False, crop=False,
-                 flip=False, use_rgbd=False,
-                 remove_oov=False, hop_length=160, deterministic_eval=False,
-                 use_librispeech=False, convolve_random_rir=False, use_da=False,
-                 read_mp4=False, use_recv_audio=False):
+                 use_rgb=False, use_depth=False, limited_fov=False,
+                 remove_oov=False, hop_length=160, use_librispeech=False, convolve_random_rir=False, use_da=False,
+                 read_mp4=False):
         super().__init__(split)
         self.split = split
         self.normalize_whole = normalize_whole
         self.normalize_segment = normalize_segment
         self.use_real_imag = use_real_imag
-        self.use_rgb = use_rgb or use_rgbd
-        self.use_depth = use_depth or use_rgbd
-        self.use_seg = use_seg
+        self.use_rgb = use_rgb
+        self.use_depth = use_depth
         self.limited_fov = limited_fov
-        self.crop = crop
-        self.flip = flip
         self.hop_length = hop_length
-        self.deterministic_eval = deterministic_eval
         self.rgb_res = (180, 320)
         self.use_librispeech = use_librispeech
         self.convolve_random_rir = convolve_random_rir
         self.use_da = use_da
         self.read_mp4 = read_mp4
-        self.use_recv_audio = use_recv_audio
 
         data_dir = 'data/avspeech/AVSpeech/frames'
-        list_file = os.path.join(data_dir, f'balanced_rt60.dict')
+        list_file = os.path.join(data_dir, f'balanced_rt60.dict')  # AVSpeech data was preprocessed to balance the RT60
         assert os.path.exists(list_file)
         with open(list_file, 'rb') as fo:
             file_dict = pickle.load(fo)
@@ -113,9 +106,6 @@ class AVSpeechDataset(SoundSpacesSpeechDataset):
             rgb = np.zeros((720, 1280, 3))
             recv_audio = np.zeros(16000*4)
             src_audio = np.zeros_like(recv_audio)
-
-        if self.use_recv_audio:
-            src_audio = recv_audio
 
         if self.use_librispeech:
             speech_file = self.speech_files[item % len(self.speech_files)]
