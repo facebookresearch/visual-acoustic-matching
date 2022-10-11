@@ -12,9 +12,8 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torchvision
-from decord import VideoReader
-from decord import cpu
-import librosa
+from PIL import Image
+from scipy.io import wavfile
 
 from vam.datasets.ss_speech_dataset import to_tensor
 from vam.datasets.ss_speech_dataset import SoundSpacesSpeechDataset
@@ -40,12 +39,8 @@ class AVSpeechDataset(SoundSpacesSpeechDataset):
         self.use_da = use_da
         self.read_mp4 = read_mp4
 
-        data_dir = 'data/avspeech/AVSpeech/frames'
-        list_file = os.path.join(data_dir, f'balanced_rt60.dict')  # AVSpeech data was preprocessed to balance the RT60
-        assert os.path.exists(list_file)
-        with open(list_file, 'rb') as fo:
-            file_dict = pickle.load(fo)
-        files = sorted(file_dict.keys())
+        self.data_dir = 'data/acoustic_avspeech'
+        files = sorted(os.listdir(os.path.join(self.data_dir, 'img')))
 
         if split == 'train':
             self.files = files[: int(len(files) * 0.95)]
@@ -61,7 +56,7 @@ class AVSpeechDataset(SoundSpacesSpeechDataset):
             self.speech_files = sorted(glob.glob(f'data/soundspaces_speech/{speech_split}/**/*.pkl', recursive=True))
 
         if self.convolve_random_rir:
-            rir_dict_file = 'data/avspeech/AVSpeech/random_rir.dict'
+            rir_dict_file = 'data/acoustic_avspeech/random_rir.pkl'
             assert os.path.exists(rir_dict_file)
             with open(rir_dict_file, 'rb') as fo:
                 rir_split = split if split != 'test-seen' else 'train'
@@ -91,21 +86,11 @@ class AVSpeechDataset(SoundSpacesSpeechDataset):
         return len(self.files)
 
     def __getitem__(self, item):
-        assert self.read_mp4
-        file = self.files[item]
-        try:
-            file = file.replace('frames', 'clips').replace('.pkl', '.mp4')
-            vr = VideoReader(file, ctx=cpu(0))
-            rgb = vr[np.random.randint(0, len(vr)) if self.split == 'train' else 0].asnumpy()
-            audio_file = file.replace('clips', 'audio').replace('.mp4', '.wav')
-            audio, _ = librosa.load(audio_file, duration=3, sr=16000)  # load first seconds
-            recv_audio = audio
-            src_audio = np.zeros_like(recv_audio)
-        except Exception as e:
-            print(f'Exception {e} happened for {file}')
-            rgb = np.zeros((720, 1280, 3))
-            recv_audio = np.zeros(16000*4)
-            src_audio = np.zeros_like(recv_audio)
+        img_file = os.path.join(self.data_dir, 'img', self.files[item])
+        audio_file = img_file.replace('img/', 'audio/').replace('.png', '.wav')
+        rgb = np.array(Image.open(img_file))
+        sr, recv_audio = wavfile.read(audio_file)
+        src_audio = np.zeros_like(recv_audio)
 
         if self.use_librispeech:
             speech_file = self.speech_files[item % len(self.speech_files)]
