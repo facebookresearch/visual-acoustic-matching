@@ -48,7 +48,7 @@ Download the data from the links below and unzip them under ``data/soundspaces_s
 wget http://dl.fbaipublicfiles.com/SoundSpaces/av_dereverb/metadata.zip
 wget http://dl.fbaipublicfiles.com/SoundSpaces/av_dereverb/train.tar.xz
 wget http://dl.fbaipublicfiles.com/SoundSpaces/av_dereverb/val-mini.tar.xz
-wget http://dl.fbaipublicfiles.com/SoundSpaces/av_dereverb/test-seen.tar.xz
+wget http://dl.fbaipublicfiles.com/SoundSpaces/av_dereverb/test-seen.zip
 wget http://dl.fbaipublicfiles.com/SoundSpaces/av_dereverb/test-unseen.tar.xz
 ```
 
