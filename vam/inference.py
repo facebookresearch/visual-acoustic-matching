@@ -31,7 +31,6 @@ parser.add_argument('--output-audio', type=str)
 def main():
     args = parser.parse_args()
     assert args.acoustic_matching or args.dereverb
-    args.model_dir = 'data/models/vam/avspeech'
 
     args.slurm = False
     args.n_gpus = 1
@@ -83,8 +82,8 @@ def main():
         ]
         transform = A.Compose(transforms)
         batch = {'rgb': transform(image=rgb)['image'].unsqueeze(0),
-                 'recv_wav': torch.zeros(audio_length).unsqueeze(0),
-                 'src_wav': torch.from_numpy(audio).unsqueeze(0)
+                 'src_wav': torch.zeros(audio_length).unsqueeze(0),
+                 'recv_wav': torch.from_numpy(audio).unsqueeze(0)
                  }
         print(batch['rgb'].shape, batch['recv_wav'].shape)
         output = model.acoustic_match(batch, 0, phase='test')
