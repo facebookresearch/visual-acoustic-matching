@@ -74,7 +74,7 @@ See the [CONTRIBUTING](CONTRIBUTING.md) file for how to help out.
 If you find the code, data, or models useful for your research, please consider citing the following two papers:
 ```
 @inproceedings{chen22vam,
-  title     =     {Visual Acoustic Matching,
+  title     =     {Visual Acoustic Matching},
   author    =     {Changan Chen and Ruohan Gao and Paul Calamia and Kristen Grauman},
   booktitle =     {CVPR},
   year      =     {2022}
@@ -82,7 +82,7 @@ If you find the code, data, or models useful for your research, please consider 
 ```
 ```
 @inproceedings{chen22dereverb,
-  title     =     {Learning Audio-Visual Dereverberation,
+  title     =     {Learning Audio-Visual Dereverberation},
   author    =     {Changan Chen and Wei Sun and David Harwath and Kristen Grauman},
   booktitle =     {arxiv},
   year      =     {2022}
